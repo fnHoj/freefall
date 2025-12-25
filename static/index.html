@@ -107,7 +107,7 @@
         let action = 0;
         let prevh = 0;
         let prevt = 0;
-        
+
         let fall_start = -1;
         let fall_end = -1;
         let saction = "";
@@ -127,7 +127,7 @@
                     innh += `<tr${data[i].its_you ? " class=\"its_you\"" : ""}><th rowspan="2">${
                         i == 0 ? "🥇" :
                         i == 1 ? "🥈" :
-                        i == 2 ? "🥉" : i + 1    
+                        i == 2 ? "🥉" : i + 1
                     }</th><td>${sanitize((data[i].record * 15625).toFixed(0))} J·s</td></tr><tr${data[i].its_you ? " class=\"its_you\"" : ""}><td><span class="name">${sanitize(data[i].name)}</span></td></tr><tr><td class="empty" colspan="2"></td></tr>`;
                 }
                 leaderboard.innerHTML = innh;
@@ -205,7 +205,7 @@
                 prevt = t;
             }
         }
-        
+
         function render(t) {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.lineWidth = 6;
