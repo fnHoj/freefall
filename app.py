@@ -26,8 +26,8 @@ def rename():
 
 @app.route("/action", methods=["POST"])
 def calc_action():
-    if request.remote_addr == "172.16.22.230":
-        return jsonify("讨厌！！！！"), 403
+    # if request.remote_addr == "172.16.22.230":
+    #     return jsonify("讨厌！！！！"), 403
     try:
         req = request.json
         assert req is not None
@@ -89,4 +89,4 @@ def debugging_required(_):
     return send_from_directory(app.static_folder, "404.html")
 
 if __name__ == '__main__':
-    app.run("0.0.0.0", 80, True)
+    app.run("0.0.0.0", 5500, True)
