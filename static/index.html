@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>自由落体</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            overflow: hidden;
+            background-color: #000;
+            font-size: 24px;
+            user-select: none;
+        }
+        body {
+            margin: 0;
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: stretch;
+        }
+        #leaderboard {
+            flex: 0 0 400px;
+            background-color: #222;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+        }
+        table, th, td {
+            border-collapse: collapse;
+        }
+        #board-container {
+            flex: 1 1 0;
+            overflow-y: auto;
+        }
+        #board th {
+            width: 100px;
+            text-align: right;
+            font-size: 175%;
+            padding-right: 0.25em;
+        }
+        #board .empty {
+            height: 0.5em;
+        }
+        .name {
+            display: block;
+            width: 300px;
+            text-overflow: clip;
+            white-space: nowrap;
+            overflow-x: auto;
+        }
+        tr.its_you {
+            background-color: #333;
+        }
+        #main {
+            flex: 1 1 0;
+            overflow: hidden;
+        }
+        #spire {
+            flex: 0 0 64px;
+            margin-right: 32px;
+            display: flex;
+            flex-direction: column;
+            image-rendering: pixelated;
+            opacity: 60%;
+        }
+        #spire .top {
+            flex: 0 0 64px;
+            background-image: url(/spire-top.png);
+            background-size: 64px;
+        }
+        #spire .body {
+            flex: 1 1 0;
+            background-image: url(/spire.png);
+            background-repeat: repeat-y;
+            background-size: 64px;
+        }
+    </style>
+</head>
+<body>
+    <div id="main">
+        <canvas id="canvas"></canvas>
+    </div>
+    <div id="spire">
+        <div class="top"></div>
+        <div class="body"></div>
+    </div>
+    <div id="leaderboard">
+        <p style="text-align: center;">排行榜 <button id="refresh">↺</button></p>
+        <div id="board-container">
+            <table id="board"></table>
+        </div>
+    </div>
+
+    <script>
+        const main = document.getElementById("main");
+        const leaderboard = document.getElementById("board");
+        const /** @type {HTMLCanvasElement} */ canvas = document.getElementById("canvas");
+        const ctx = canvas.getContext("2d");
+
+        const g = 0.08;
+
+        let cy = 0;
+        let t0 = -Infinity;
+
+        let action = 0;
+        let prevh = 0;
+        let prevt = 0;
+        
+        let fall_start = -1;
+        let fall_end = -1;
+        let saction = "";
+
+        function sanitize(s) {
+            return s.toString()
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&apos;");
+        }
+
+        function show_leaderboard() {
+            fetch("/leaderboard").then(res => res.json()).then(data => {
+                let innh = "";
+                for (let i = 0; i < data.length; i++) {
+                    innh += `<tr${data[i].its_you ? " class=\"its_you\"" : ""}><th rowspan="2">${
+                        i == 0 ? "🥇" :
+                        i == 1 ? "🥈" :
+                        i == 2 ? "🥉" : i + 1    
+                    }</th><td>${sanitize((data[i].record * 15625).toFixed(0))} J·s</td></tr><tr${data[i].its_you ? " class=\"its_you\"" : ""}><td><span class="name">${sanitize(data[i].name)}</span></td></tr><tr><td class="empty" colspan="2"></td></tr>`;
+                }
+                leaderboard.innerHTML = innh;
+            });
+        }
+
+        class Step {
+            time; height;
+            constructor(time, height) {
+                this.time = time;
+                this.height = height;
+            }
+        };
+
+        let trail = [];
+
+        function set_canvas_size() {
+            canvas.width = main.clientWidth;
+            canvas.height = main.clientHeight;
+        }
+
+        function game_start() {
+            const t = performance.now();
+            if (t - t0 < 5000)
+                return;
+            action = 0;
+            prevh = 0;
+            prevt = t0 = t + 3000;
+            fall_start = -1;
+            fall_end = -1;
+            saction = "";
+        }
+
+        function attempt_start(t) {
+            if (!~fall_start && isFinite(t0) && t >= t0) {
+                fall_start = trail.length;
+                trail.push(new Step(t0, 0));
+            }
+        }
+        function attempt_end(t) {
+            if (!~fall_end && isFinite(t0) && t >= t0 + 5000) {
+                fall_end = trail.length;
+                trail.push(new Step(t0 + 5000, 1));
+                fetch("/action", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify(trail.slice(fall_start + 1, fall_end).map(step => [(step.time - t0) / 1000, step.height]))
+                }).then(res => res.json()).then(res => {
+                    saction = `${(res.action * 15625).toFixed(0)} J·s`;
+                    if (res.rename) {
+                        fetch("/rename", {
+                            method: "POST",
+                            body: prompt("给出你的大名！")
+                        });
+                    }
+                    show_leaderboard();
+                });
+            }
+        }
+
+        function new_step(t, cy) {
+            attempt_start(t);
+            attempt_end(t);
+            trail.push(new Step(t, cy));
+            if (t < t0 + 10)
+                return;
+            if (t - t0 < 4900) {
+                const dh = cy - prevh;
+                const dt = (t - prevt) / 1000;
+                if (dt < 1e-4)
+                    return;
+                const rt = t0 + 5000 - t;
+                action += dh * dh / (2 * dt) - g * (1 - (prevh + cy) / 2) * dt;
+                prevh = cy;
+                prevt = t;
+            }
+        }
+        
+        function render(t) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.lineWidth = 6;
+            ctx.strokeStyle = "#666";
+            ctx.lineJoin = "round";
+            ctx.lineCap = "round";
+            ctx.beginPath();
+            if (trail.length)
+                ctx.moveTo(canvas.width - 16, 16 + (canvas.height - 32) * trail[trail.length - 1].height);
+            for (let i = trail.length - 1; i >= 0; i--) {
+                let x = canvas.width - 16 + 0.2 * (trail[i].time - t);
+                ctx.lineTo(x, 16 + (canvas.height - 32) * trail[i].height);
+                if (x < 0)
+                    break;
+            }
+            ctx.stroke();
+            ctx.fillStyle = "#999";
+            ctx.beginPath();
+            ctx.arc(canvas.width - 16, 16 + (canvas.height - 32) * cy, 16, 0, 2 * Math.PI);
+            ctx.fill();
+            if (t - t0 < 5000) {
+                const tfloor = Math.floor((t - t0) / 1000);
+                if (t < t0) {
+                    ctx.textBaseline = "middle";
+                    ctx.font = "512px monospace";
+                    ctx.textAlign = "center";
+                    ctx.fillStyle = `rgba(255, 255, 255, ${1 - ((t - t0) / 1000 - tfloor)})`;
+                    ctx.fillText(-tfloor, canvas.width / 2, canvas.height / 2);
+                    ctx.strokeStyle = "#fff";
+                    ctx.lineWidth = 4;
+                    ctx.strokeText(-tfloor, canvas.width / 2, canvas.height / 2);
+                    ctx.strokeStyle = "#fff6";
+                    ctx.beginPath();
+                    ctx.arc(canvas.width - 16, 16, 14, 0, 2 * Math.PI);
+                    ctx.stroke();
+                }
+                else {
+                    const prog = (t - t0) / 5000;
+                    const dt = (t - prevt) / 1000;
+                    const py = trail.length ? trail[trail.length - 1].height : 0;
+                    const pyc = 1 - py;
+                    const dh = py - prevh;
+                    let rt = (t0 + 5000 - t) / 1000;
+                    if (rt < 0.1)
+                        rt = 0.1;
+                    ctx.textBaseline = "middle";
+                    ctx.font = "256px monospace";
+                    ctx.textAlign = "center";
+                    ctx.strokeStyle = "#fff6";
+                    ctx.lineWidth = 4;
+                    ctx.beginPath();
+                    ctx.arc(canvas.width - 16, 16 + (canvas.height - 32) * prog * prog, 14, 0, 2 * Math.PI);
+                    ctx.stroke();
+                    ctx.fillStyle = "#fff";
+                    ctx.font = "64px monospace";
+                    ctx.fillText(`${Math.round((action +
+                        (dt < 1e-4 ? 0 : dh * dh / (2 * dt) - g * (1 - (prevh + py) / 2) * dt) +
+                        (rt < 1e-4 ? 0 : pyc * pyc / (2 * rt) - 0.5 * g * pyc * rt - g * g * rt * rt * rt / 24)
+                    ) * 15625 + 6250 / 3)} J·s`, canvas.width - 256, canvas.height / 2);
+                }
+            }
+            else {
+                ctx.font = "bold 128px monospace";
+                ctx.strokeStyle = "#fff";
+                ctx.lineWidth = 4;
+                ctx.strokeText(saction, canvas.width / 2, canvas.height / 2);
+            }
+        }
+
+        function frame() {
+            const t = performance.now();
+            attempt_start(t);
+            attempt_end(t);
+            render(t);
+            requestAnimationFrame(frame);
+        }
+
+        addEventListener("pointermove", e => {
+            const t = performance.now();
+            cy = (e.clientY - 16) / (window.innerHeight - 32);
+            if (cy <= 0)
+                cy = 0;
+            if (cy >= 1)
+                cy = 1;
+            if (trail.length && t - trail[trail.length - 1].time > 50)
+                new_step(t - 20, trail[trail.length - 1].height);
+            new_step(t, cy);
+        });
+        addEventListener("resize", () => set_canvas_size());
+        addEventListener("keydown", e => {
+            switch (e.code) {
+                case "Space":
+                    game_start();
+                    break;
+            }
+        });
+        document.getElementById("refresh").addEventListener("click", () => show_leaderboard());
+        show_leaderboard();
+        set_canvas_size();
+        frame();
+    </script>
+</body>
+</html>

@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>error，需要调试</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            font-family: sans-serif;
+            font-size: 32px;
+            background: #000;
+        }
+        body {
+            margin: 0;
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+        }
+        @keyframes scroll {
+            from {
+                inset-block-start: calc(100% + 1lh);
+            }
+            to {
+                inset-block-start: -2lh;
+            }
+        }
+        p {
+            position: absolute;
+            margin: 0;
+            margin-inline-start: 4em;
+            inset-block-start: calc(100% + 1lh);
+            animation: scroll 8s linear infinite;
+        }
+    </style>
+</head>
+<body>
+    <p>error，需要调试</p>
+</body>
+</html>
